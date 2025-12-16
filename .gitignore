@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.pyc
+
+# Data & outputs
+*.npz
+*.mp4
+*.bvh
+output/
+clean_input_npz/
+
+# Environments
+.env
+venv/
+conda_envs/
+
+# OS
+.DS_Store
+Thumbs.db
