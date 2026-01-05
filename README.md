@@ -1,97 +1,91 @@
 ```markdown
-# Mocap Cleaning: BVH → SMPL-H
+# Mocap Cleaning: BVH → SMPL-H (R&D Pipeline)
 
-This repository provides a minimal, research-focused pipeline for converting
-BVH motion capture files into stable, correctly oriented SMPL-H motion.
+This repository hosts a research-focused pipeline for converting raw BVH motion capture data into stable, correctly oriented SMPL-H motion. 
 
-The pipeline is designed for dataset cleaning and validation, not real-time use.
+**Current Status:** Active R&D. The pipeline includes a custom BVH parser, a forward kinematics (FK) engine, and multiple experimental solvers designed to handle coordinate system mismatches (Y-Up vs Z-Up) and skeleton hierarchy differences.
 
 ---
 
-## Pipeline Overview
+## Key Features
 
-1. Load BVH motion (ZXY Euler rotations)
-2. Convert BVH → SMPL-H using a verified basis transformation
-3. Apply FK-consistent foot locking (translation only)
-4. Export clean SMPL-H motion as `.npz`
-5. Visualize motion using a forward-kinematics skeleton
+* **Custom BVH Parser:** Lightweight, NumPy-based parser (no heavy dependencies) that handles various Euler orders (ZXY, XYZ, etc.).
+* **SMPL Forward Kinematics:** Custom FK engine to visualize and validate joint rotations without relying on heavy 3D software.
+* **Coordinate Space Retargeting:** Solvers to map raw Motion Capture space to SMPL world space.
+* **Statistical Calibration:** (WIP) Auto-detection of "T-Pose" frames to calculate rest-pose offset matrices dynamically.
 
 ---
 
 ## Folder Structure
 
-```
-
+```text
 .
-├── motion/      # Core motion logic, FK, visualization
-├── scripts/     # CLI tools for conversion and post-processing
+├── motion/          # Core FK engine, Rendering logic, Skeleton visualization
+├── scripts/         # CLI tools and Experimental Retargeting Solvers
+├── output/          # Generated .npz files and debug renders
 └── README.md
 
-````
+```
 
-- `motion/`  
-  Contains SMPL-H forward kinematics and visualization utilities.
+---
 
-- `scripts/`  
-  Command-line tools for BVH conversion and motion stabilization.
+## Experimental Solvers (Scripts)
+
+We are currently testing multiple approaches to solve axis alignment and limb twisting artifacts.
+
+| Script Name | Approach | Status |
+| --- | --- | --- |
+| `process_smart_fix.py` | **Hybrid Approach.** Uses parent-relative rotation mapping with a global root correction. | *Active Debugging* |
+| `process_stat_fix.py` | **Statistical Calibration.** Scans specific frame ranges (e.g., 0-30 or 800-900) to find the optimal T-Pose for calibration. | *Testing* |
+| `process_vector_copy.py` | **Vector Alignment.** Ignores joint rotation values and calculates angles based on global limb vectors. Good for physics, bad for "swing" velocity. | *Reference* |
+| `process_global_decoupled.py` | **Decoupled Mapping.** Separates arm rotation from shoulder rotation to prevent "twisted spine" artifacts. | *Reference* |
 
 ---
 
 ## Usage
 
-### Convert BVH to SMPL-H
+### 1. Running the Retargeting (Smart Fix)
+
+This script applies the current best-performing logic (Smart Fix) to a raw BVH file.
 
 ```bash
-python -m scripts.convert_bvh_to_smplh input.bvh output.npz
-````
+python -m scripts.process_smart_fix --input "path/to/input.bvh" --output "output/result.npz"
 
-This step parses BVH files with ZXY Euler rotations, applies the correct
-BVH → SMPL-H basis transformation, and exports SMPL-H motion parameters.
+```
+
+### 2. Statistical Calibration (Frame Scan)
+
+To fix issues where the skeleton starts "lying down" or twisted, use the statistical scanner to find a better Rest Pose.
+
+```bash
+python -m scripts.process_stat_fix_800 --input "path/to/input.bvh" --output "output/calibrated.npz"
+
+```
+
+### 3. Visualizing the Output
+
+Render the `.npz` file to a video using the custom FK renderer.
+
+```bash
+python -m motion.render_production_slow --npy "output/result.npz" --bvh "path/to/reference.bvh"
+
+```
 
 ---
 
-### Stabilize Motion (Foot Lock)
+## Known Issues (WIP)
 
-```bash
-python -m scripts.postprocess_smplh_stabilize output.npz
-```
-
-This step applies FK-consistent foot locking by adjusting translation only.
-All joint rotations remain unchanged.
-
-Output file:
-
-```
-output_stable.npz
-```
-
----
-
-### Visualize with FK Skeleton
-
-```bash
-python -m motion.render_fk_skeleton output_stable.npz
-```
-
-This visualization is intended for quick validation of orientation,
-foot stability, and skeleton consistency.
-
----
-
-## Notes
-
-* Rotations are never altered during stabilization
-* Foot locking operates on translation only
-* Assumes a clean BVH joint hierarchy and known rotation order
-* Intended for offline processing and dataset cleaning
-* Not optimized for real-time or interactive use
+* **Coordinate Flipping:** During complex rotations (e.g., spins), the root orientation may flip axes, causing the character to momentarily lie flat. This is currently being addressed via the `process_stat_fix` calibration logic.
+* **Shoulder Twisting:** Direct mapping of BVH collars to SMPL shoulders can cause mesh clipping. Vector-based decoupling is being tested as a fix.
 
 ---
 
 ## Intended Use
 
 * Motion capture dataset cleanup
-* BVH → SMPL-H research pipelines
-* Debugging coordinate system and orientation issues
-* Preprocessing motion for learning-based models
+* Developing robust BVH → SMPL-H pipelines
+* Debugging mathematical inconsistencies in raw mocap data
 
+```
+
+```
