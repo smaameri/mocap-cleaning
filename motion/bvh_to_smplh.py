@@ -1,15 +1,14 @@
-# motion/bvh_to_smplh.py
 import numpy as np
 from scipy.spatial.transform import Rotation as R
 
 # ============================================================
 # CONFIG
 # ============================================================
-AUTO_COMPUTE_ROOT_FIX = True     # always ON
-TRANSL_CM_TO_M = True            # ProxiData uses cm
+AUTO_COMPUTE_ROOT_FIX = True
+TRANSL_CM_TO_M = True
 
 # ============================================================
-# SMPL BODY JOINT ORDER (21 joints, SMPL-H body)
+# SMPL-H BODY JOINT ORDER (21 joints, no hands)
 # ============================================================
 SMPL_BODY_21 = [
     "left_hip", "right_hip", "spine1",
@@ -26,36 +25,40 @@ SMPL_BODY_21 = [
 # BVH → SMPL joint mapping (ProxiData)
 # ============================================================
 BVH_TO_SMPL = {
+    "LeftUpLeg": "left_hip",
+    "RightUpLeg": "right_hip",
+
     "Spine": "spine1",
     "Spine1": "spine2",
     "Spine2": "spine3",
 
+    "LeftLeg": "left_knee",
+    "RightLeg": "right_knee",
+
+    "LeftFoot": "left_ankle",
+    "RightFoot": "right_ankle",
+
+    "LeftToeBase": "left_foot",
+    "RightToeBase": "right_foot",
+
     "Neck": "neck",
     "Head": "head",
 
-    "LeftUpLeg": "left_hip",
-    "LeftLeg": "left_knee",
-    "LeftFoot": "left_ankle",
-    "LeftToeBase": "left_foot",
-
-    "RightUpLeg": "right_hip",
-    "RightLeg": "right_knee",
-    "RightFoot": "right_ankle",
-    "RightToeBase": "right_foot",
-
     "LeftShoulder": "left_collar",
-    "LeftArm": "left_shoulder",
-    "LeftForeArm": "left_elbow",
-    "LeftHand": "left_wrist",
-
     "RightShoulder": "right_collar",
+
+    "LeftArm": "left_shoulder",
     "RightArm": "right_shoulder",
+
+    "LeftForeArm": "left_elbow",
     "RightForeArm": "right_elbow",
+
+    "LeftHand": "left_wrist",
     "RightHand": "right_wrist",
 }
 
 # ============================================================
-# BVH → SMPL basis (CORRECT, VERIFIED)
+# BVH → SMPL basis (VERIFIED)
 # ============================================================
 C_bvh2smpl = np.array([
     [-1.0,  0.0,  0.0],
@@ -66,7 +69,7 @@ C_bvh2smpl = np.array([
 C_smpl2bvh = C_bvh2smpl.T.copy()
 
 # ============================================================
-# HELPERS
+# Helpers
 # ============================================================
 def _safe_channels(channels, name):
     return list(channels.get(name, []))
@@ -79,29 +82,31 @@ def _rotation_index_map(ch_list):
     for i, ch in enumerate(ch_list):
         ch = ch.lower()
         if "rotation" in ch:
-            if ch.startswith("x"): idx["X"] = i
-            elif ch.startswith("y"): idx["Y"] = i
-            elif ch.startswith("z"): idx["Z"] = i
+            if ch.startswith("x"):
+                idx["X"] = i
+            elif ch.startswith("y"):
+                idx["Y"] = i
+            elif ch.startswith("z"):
+                idx["Z"] = i
     return idx
 
 
 def _read_zxy(frame, base, idx):
-    try:
-        z = frame[base + idx.get("Z", 0)]
-        x = frame[base + idx.get("X", 1)]
-        y = frame[base + idx.get("Y", 2)]
-        return float(z), float(x), float(y)
-    except Exception:
+    if idx is None:
         return 0.0, 0.0, 0.0
+    z = frame[base + idx.get("Z", 0)]
+    x = frame[base + idx.get("X", 1)]
+    y = frame[base + idx.get("Y", 2)]
+    return float(z), float(x), float(y)
 
 
-def _zxy_to_rotvec(z, x, y):
+def _zxy_to_rotmat(z, x, y):
     R_bvh = R.from_euler("ZXY", [z, x, y], degrees=True).as_matrix()
-    R_smpl = C_bvh2smpl @ R_bvh @ C_smpl2bvh
-    return R.from_matrix(R_smpl).as_rotvec().astype(np.float32)
+    return C_bvh2smpl @ R_bvh @ C_smpl2bvh
+
 
 # ============================================================
-# MAIN CONVERTER
+# MAIN
 # ============================================================
 def bvh_to_smplh(bvh):
 
@@ -126,58 +131,58 @@ def bvh_to_smplh(bvh):
     hips_ci = channel_index["Hips"]
     hips_channels = _safe_channels(channels, "Hips")
 
-    # ========================================================
-    # AUTO ROOT FIX (frame 0)
-    # ========================================================
+    # --------------------------------------------------------
+    # AUTO ROOT FIX (frame 0, SMPL space)
+    # --------------------------------------------------------
     root_fix = None
     if AUTO_COMPUTE_ROOT_FIX:
         rz, rx, ry = _read_zxy(frames[0], hips_ci, rot_map["Hips"])
-        R0 = R.from_euler("ZXY", [rz, rx, ry], degrees=True).as_matrix()
-        R0 = C_bvh2smpl @ R0 @ C_smpl2bvh
-        root_fix = R0.T.astype(np.float32)
+        R0 = _zxy_to_rotmat(rz, rx, ry)
+        root_fix = R.from_matrix(R0).inv().as_matrix().astype(np.float32)
 
-    # ========================================================
-    # PER FRAME
-    # ========================================================
+    # --------------------------------------------------------
+    # Per frame
+    # --------------------------------------------------------
     for t in range(T):
 
-        # -------- translation
+        # ---------- Translation
         xi = hips_channels.index("Xposition")
         yi = hips_channels.index("Yposition")
         zi = hips_channels.index("Zposition")
 
-        pos = frames[t, hips_ci + xi : hips_ci + zi + 1]
+        pos = frames[t, hips_ci + xi: hips_ci + zi + 1]
         pos = C_bvh2smpl @ pos
         if TRANSL_CM_TO_M:
             pos *= 0.01
         transl[t] = pos
 
-        # -------- root rotation
+        # ---------- Root rotation
         rz, rx, ry = _read_zxy(frames[t], hips_ci, rot_map["Hips"])
-        rv = _zxy_to_rotvec(rz, rx, ry)
+        R_root = _zxy_to_rotmat(rz, rx, ry)
         if root_fix is not None:
-            Rm = root_fix @ R.from_rotvec(rv).as_matrix()
-            rv = R.from_matrix(Rm).as_rotvec()
-        global_orient[t] = rv
+            R_root = root_fix @ R_root
+        global_orient[t] = R.from_matrix(R_root).as_rotvec()
 
-        # -------- body joints
-        for j in joint_names:
-            if j not in BVH_TO_SMPL:
-                continue
-            if j not in channel_index:
+        # ---------- Body joints
+        for bvh_joint, smpl_joint in BVH_TO_SMPL.items():
+            if bvh_joint not in channel_index:
                 continue
 
-            tgt = BVH_TO_SMPL[j]
-            if tgt not in body_index:
-                continue
+            smpl_idx = body_index[smpl_joint]
+            ci = channel_index[bvh_joint]
 
-            ci = channel_index[j]
-            rz, rx, ry = _read_zxy(frames[t], ci, rot_map[j])
-            body_pose[t, body_index[tgt]*3:(body_index[tgt]+1)*3] = _zxy_to_rotvec(rz, rx, ry)
+            rz, rx, ry = _read_zxy(frames[t], ci, rot_map[bvh_joint])
+            Rj = _zxy_to_rotmat(rz, rx, ry)
 
-    # ========================================================
-    # 🔥 GLOBAL FLOOR ALIGNMENT (CRITICAL)
-    # ========================================================
+            if root_fix is not None:
+                Rj = root_fix @ Rj
+
+            body_pose[t, smpl_idx * 3:(smpl_idx + 1) * 3] = \
+                R.from_matrix(Rj).as_rotvec()
+
+    # --------------------------------------------------------
+    # Floor alignment (Y-up)
+    # --------------------------------------------------------
     min_y = np.min(transl[:, 1])
     transl[:, 1] -= min_y
 
