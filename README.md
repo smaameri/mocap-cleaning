@@ -1,91 +1,65 @@
-```markdown
-# Mocap Cleaning: BVH → SMPL-H (R&D Pipeline)
-
-This repository hosts a research-focused pipeline for converting raw BVH motion capture data into stable, correctly oriented SMPL-H motion. 
-
-**Current Status:** Active R&D. The pipeline includes a custom BVH parser, a forward kinematics (FK) engine, and multiple experimental solvers designed to handle coordinate system mismatches (Y-Up vs Z-Up) and skeleton hierarchy differences.
 
 ---
 
-## Key Features
+# StableMotion: Professional BVH to SMPL-H Processing Pipeline
 
-* **Custom BVH Parser:** Lightweight, NumPy-based parser (no heavy dependencies) that handles various Euler orders (ZXY, XYZ, etc.).
-* **SMPL Forward Kinematics:** Custom FK engine to visualize and validate joint rotations without relying on heavy 3D software.
-* **Coordinate Space Retargeting:** Solvers to map raw Motion Capture space to SMPL world space.
-* **Statistical Calibration:** (WIP) Auto-detection of "T-Pose" frames to calculate rest-pose offset matrices dynamically.
+This repository provides a complete system to clean, fix, and convert raw Motion Capture (BVH) data into production-ready SMPL-H files. It is specifically designed to handle "ProxiData" martial arts sequences.
 
----
+## 🌟 Why this project is needed?
 
-## Folder Structure
+Raw motion capture data often has technical errors that make it unusable for AI training or 3D animation. This pipeline automatically fixes:
 
-```text
-.
-├── motion/          # Core FK engine, Rendering logic, Skeleton visualization
-├── scripts/         # CLI tools and Experimental Retargeting Solvers
-├── output/          # Generated .npz files and debug renders
-└── README.md
-
-```
+* **Jitter (Shaking):** Removes sensor noise while keeping the sharp movement of martial arts.
+* **Incorrect Scale:** Converts data from Centimeters to Meters (0.01 scale) for realistic body sizes.
+* **Coordinate Mismatch:** Changes "Y-Up" raw data to "Z-Up" standard format.
+* **Floating Characters:** Ensures the character is always touching the floor ().
 
 ---
 
-## Experimental Solvers (Scripts)
+## 📂 New Folder & File Structure
 
-We are currently testing multiple approaches to solve axis alignment and limb twisting artifacts.
+I have organized the code into a clean, professional structure so any developer can understand it immediately:
 
-| Script Name | Approach | Status |
-| --- | --- | --- |
-| `process_smart_fix.py` | **Hybrid Approach.** Uses parent-relative rotation mapping with a global root correction. | *Active Debugging* |
-| `process_stat_fix.py` | **Statistical Calibration.** Scans specific frame ranges (e.g., 0-30 or 800-900) to find the optimal T-Pose for calibration. | *Testing* |
-| `process_vector_copy.py` | **Vector Alignment.** Ignores joint rotation values and calculates angles based on global limb vectors. Good for physics, bad for "swing" velocity. | *Reference* |
-| `process_global_decoupled.py` | **Decoupled Mapping.** Separates arm rotation from shoulder rotation to prevent "twisted spine" artifacts. | *Reference* |
+### 1. **`scripts/` (The Engine Room)**
+
+* **`smplh_processor.py`**: The core logic file. It cleans the data using the Savitzky-Golay filter and fixes the orientation.
+* **`batch_processor.py`**: A powerful automation tool. It allows you to process 100s of BVH files in one click instead of doing them one by one.
+
+### 2. **`motion/` (The Skeleton Logic)**
+
+* **`visualizer.py`**: Generates high-quality MP4 videos of the motion with a 3D floor grid for review.
+* **`smpl_fk.py`**: Calculates the exact 3D position of every joint using Forward Kinematics.
+* **`bvh_loader.py`**: A custom parser that reads BVH hierarchies and handles "End Sites" correctly.
+* **`bvh_to_smplh.py`**: Maps raw joint names to the standard SMPL-H body model.
 
 ---
 
-## Usage
+## 🛠️ Key Technical Features
 
-### 1. Running the Retargeting (Smart Fix)
+### **1. Advanced Jitter Removal**
 
-This script applies the current best-performing logic (Smart Fix) to a raw BVH file.
+Instead of using basic smoothing, we use the **Savitzky-Golay filter** (window=11, poly=3). This allows the character to move smoothly while ensuring that fast actions (like a punch impact) remain sharp and don't look "blurry."
+
+### **2. Automatic Floor Grounding**
+
+We scan the entire animation to find the lowest point of the feet. The code then shifts the whole sequence so the character never "floats" or "sinks" into the floor.
+
+### **3. Optimized for Production**
+
+* **NPZ Exports:** Clean data is saved in `.npz` format for easy integration into Machine Learning models.
+* **Clean Filenames:** No more messy timestamps or version numbers; files are saved with clear, professional names.
+
+---
+
+## 🚀 How to Use
+
+To process all your raw files at once and generate both data and videos:
 
 ```bash
-python -m scripts.process_smart_fix --input "path/to/input.bvh" --output "output/result.npz"
+python -m scripts.batch_processor
 
 ```
 
-### 2. Statistical Calibration (Frame Scan)
-
-To fix issues where the skeleton starts "lying down" or twisted, use the statistical scanner to find a better Rest Pose.
-
-```bash
-python -m scripts.process_stat_fix_800 --input "path/to/input.bvh" --output "output/calibrated.npz"
-
-```
-
-### 3. Visualizing the Output
-
-Render the `.npz` file to a video using the custom FK renderer.
-
-```bash
-python -m motion.render_production_slow --npy "output/result.npz" --bvh "path/to/reference.bvh"
-
-```
+All cleaned data will be available in the `output/clean_input_npz/` directory.
 
 ---
-
-## Known Issues (WIP)
-
-* **Coordinate Flipping:** During complex rotations (e.g., spins), the root orientation may flip axes, causing the character to momentarily lie flat. This is currently being addressed via the `process_stat_fix` calibration logic.
-* **Shoulder Twisting:** Direct mapping of BVH collars to SMPL shoulders can cause mesh clipping. Vector-based decoupling is being tested as a fix.
-
----
-
-## Intended Use
-
-* Motion capture dataset cleanup
-* Developing robust BVH → SMPL-H pipelines
-* Debugging mathematical inconsistencies in raw mocap data
-
-```
-
-```
