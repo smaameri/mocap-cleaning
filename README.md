@@ -1,65 +1,90 @@
+```markdown
+# StableMotion: Professional SMPL-H Processing Pipeline
+
+**StableMotion** provides a complete, robust system to clean, fix, and convert Motion Capture data. It handles the full data lifecycle: from raw BVH cleaning to SMPL-H processing (`.npz`), and converting predictions back to visualizable BVH formats for Blender/Unity.
 
 ---
-
-# StableMotion: Professional BVH to SMPL-H Processing Pipeline
-
-This repository provides a complete system to clean, fix, and convert raw Motion Capture (BVH) data into production-ready SMPL-H files. It is specifically designed to handle "ProxiData" martial arts sequences.
 
 ## 🌟 Why this project is needed?
 
-Raw motion capture data often has technical errors that make it unusable for AI training or 3D animation. This pipeline automatically fixes:
+Raw motion capture data and AI outputs often suffer from technical artifacts that make them unusable for production pipelines. This repository solves those critical issues:
 
-* **Jitter (Shaking):** Removes sensor noise while keeping the sharp movement of martial arts.
-* **Incorrect Scale:** Converts data from Centimeters to Meters (0.01 scale) for realistic body sizes.
-* **Coordinate Mismatch:** Changes "Y-Up" raw data to "Z-Up" standard format.
-* **Floating Characters:** Ensures the character is always touching the floor ().
+* **⚡ Jitter Removal:** Eliminates sensor noise using advanced Savitzky-Golay filtering while preserving sharp martial arts movements.
+* **🔄 Coordinate Mismatch:** Automatically handles the complex conversion between Research formats (Z-Up) and Animation standards (Y-Up).
+* **🦶 Floating Characters:** Implements **Smart Grounding** logic to ensure characters stay firmly on the floor (fixing the "flying" glitch).
+* **🦴 Skeleton Mapping:** Automatically retargets 52-joint SMPL-H data to standard BVH hierarchies.
 
 ---
 
-## 📂 New Folder & File Structure
+## 📂 File Structure (The Engine Room)
 
-I have organized the code into a clean, professional structure so any developer can understand it immediately:
+The codebase is organized into a modular architecture separating logic from automation:
 
-### 1. **`scripts/` (The Engine Room)**
+### `scripts/` (Automation & Processing)
+* `batch_processor.py`: **The Forward Pipeline.** Cleans raw BVH files, applies smoothing, and exports to `.npz` for AI training.
+* `batch_smart_bvh.py` (🆕 **New Feature**): **The Reverse Pipeline.** Converts processed `.npz` files back to `.bvh` for visualization.
+    * **Auto-Scaling:** Detects Meters vs Centimeters.
+    * **Rotation Fix:** Corrects the -90 degree orientation issue.
+    * **Floor Detection:** Calculates the lowest hip position to fix vertical offsets.
 
-* **`smplh_processor.py`**: The core logic file. It cleans the data using the Savitzky-Golay filter and fixes the orientation.
-* **`batch_processor.py`**: A powerful automation tool. It allows you to process 100s of BVH files in one click instead of doing them one by one.
-
-### 2. **`motion/` (The Skeleton Logic)**
-
-* **`visualizer.py`**: Generates high-quality MP4 videos of the motion with a 3D floor grid for review.
-* **`smpl_fk.py`**: Calculates the exact 3D position of every joint using Forward Kinematics.
-* **`bvh_loader.py`**: A custom parser that reads BVH hierarchies and handles "End Sites" correctly.
-* **`bvh_to_smplh.py`**: Maps raw joint names to the standard SMPL-H body model.
+### `motion/` (Core Logic)
+* `visualizer.py`: Generates high-quality MP4 previews with a 3D grid.
+* `smpl_fk.py`: Handles Forward Kinematics for exact joint position calculation.
+* `bvh_loader.py`: Custom parser for reading complex hierarchies and End Sites.
 
 ---
 
 ## 🛠️ Key Technical Features
 
-### **1. Advanced Jitter Removal**
+### 1. Advanced Jitter Removal (Savitzky-Golay)
+Unlike basic linear smoothing which blurs motion, we utilize a **Savitzky-Golay filter** (window=11, poly=3). This preserves the high-frequency details of impacts (punches/kicks) while effectively removing high-frequency sensor noise.
 
-Instead of using basic smoothing, we use the **Savitzky-Golay filter** (window=11, poly=3). This allows the character to move smoothly while ensuring that fast actions (like a punch impact) remain sharp and don't look "blurry."
+### 2. Smart Grounding Logic
+The pipeline performs a full-sequence scan to detect the **lowest Z-height of the pelvis**. It dynamically shifts the entire animation to align with a standard leg height (approx. 95cm), ensuring the character neither floats in the air nor clips through the floor.
 
-### **2. Automatic Floor Grounding**
-
-We scan the entire animation to find the lowest point of the feet. The code then shifts the whole sequence so the character never "floats" or "sinks" into the floor.
-
-### **3. Optimized for Production**
-
-* **NPZ Exports:** Clean data is saved in `.npz` format for easy integration into Machine Learning models.
-* **Clean Filenames:** No more messy timestamps or version numbers; files are saved with clear, professional names.
+### 3. Coordinate Transformation (Z-Up ↔ Y-Up)
+The system automatically detects the input coordinate system (common in research datasets) and applies the necessary **Matrix Transformations** to ensure immediate compatibility with Blender, Unity, and Unreal Engine.
 
 ---
 
 ## 🚀 How to Use
 
-To process all your raw files at once and generate both data and videos:
+### Installation
+Ensure you have Python installed, then install the required dependencies:
+```bash
+pip install numpy scipy tqdm
+
+```
+
+### 1. Forward Pipeline (BVH → NPZ)
+
+To clean raw motion files and prepare them for ML training:
 
 ```bash
 python -m scripts.batch_processor
 
 ```
 
-All cleaned data will be available in the `output/clean_input_npz/` directory.
+### 2. Reverse Pipeline (NPZ → BVH)
+
+To convert AI/ML outputs back to animation files for Blender:
+
+```bash
+python -m scripts.batch_smart_bvh --input_dir ./data/input_npz --output_dir ./data/output_bvh
+
+```
 
 ---
+
+## 📝 Note on Retargeting & Limitations
+
+While the pipeline is robust, motion capture data varies significantly between sources.
+
+* **Motion Data:** The conversion logic correctly maps the skeleton and orientation. However, the final visual output may vary slightly depending on the specific input data quality.
+* **Fine-tuning:** Due to retargeting limitations between SMPL and standard skeletons, some specific motions might require minor offset adjustments in Blender for perfect foot planting.
+
+---
+
+```
+
+```
